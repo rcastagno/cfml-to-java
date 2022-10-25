@@ -114,7 +114,6 @@ public class Transpiler {
                     break;
             }
         }
-
         System.out.println(String.join("\n", output));
 
     }
