@@ -11,12 +11,13 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.List;
 
 public class Transpiler {
     public static void main(String args[]) throws IOException {
         CFMLParser fCfmlParser;
         System.out.println(Paths.get(".").toAbsolutePath().toString());
-        final String sourceUrlFile = "file:src/main/resources/test2.cfm";
+        final String sourceUrlFile = "file:src/main/resources/test3.cfm";
         final String filename = Paths.get(sourceUrlFile).getFileName().toString();
         final String basename = FilenameUtils.getBaseName(filename);
         final String fileext = FilenameUtils.getExtension(filename);
@@ -37,15 +38,16 @@ public class Transpiler {
         ArrayList<String> output = new ArrayList<>();
 
         for (Element element : fCfmlParser.getAllTags()) {
-            switch(element.getName()) {
+            String elementName = element.getName();
+            switch(elementName) {
                 case "cfscript":
                     CFScriptStatement cfScriptStatement = fCfmlParser.parseScript(element.getSource().toString());
                     for (CFScriptStatement scriptStatement : cfScriptStatement.decomposeScript()) {
                         for (CFExpression cfExpression : scriptStatement.decomposeExpression()) {
 
-                            String cl = cfExpression.getClass().getName();
+                            String expressionClassName = cfExpression.getClass().getName();
 
-                            switch (cl) {
+                            switch (expressionClassName) {
                                 case "cfml.parsing.cfscript.CFVarDeclExpression":
                                     CFExpression var = ((CFVarDeclExpression) cfExpression).getVar();
                                     String varClass = var.getClass().getName();
@@ -71,18 +73,18 @@ public class Transpiler {
                                                     output.add(src);
                                                     break;
                                                 default:
-                                                    System.out.println(initClass);
+                                                    System.out.println("Identifier class not managed: " + initClass);
                                                     break;
                                             }
 
                                             break;
                                         default:
-                                            System.out.println(varClass);
+                                            System.out.println("Variable declaration not managed: " + varClass);
                                     }
                                     break;
                                 case "cfml.parsing.cfscript.CFFunctionExpression":
-                                    String fn = ((CFFunctionExpression) cfExpression).getName();
-                                    switch (fn) {
+                                    String functionName = ((CFFunctionExpression) cfExpression).getName();
+                                    switch (functionName) {
                                         case "writeOutput":
                                             ArrayList<String> src = new ArrayList<>();
                                             src.add("System.out.println(");
@@ -98,23 +100,61 @@ public class Transpiler {
 
                                             break;
                                         default:
-                                            System.out.println(fn);
+                                            System.out.println("Function expression not managed: " + functionName);
                                             break;
                                     }
                                     break;
                                 default:
-                                    System.out.println(cl);
+                                    System.out.println("Expression not managed: " + expressionClassName);
                                     break;
                             }
                         }
                     }
                     break;
+                case "cfquery":
+                    String queryName = element.getAttributes().getValue("name");
+
+                    output.add("String queryName = \"" + queryName + "\";");
+
+                    // the full sql with all cfqueryparams
+                    String fullSql = element.getContent().getSource().getParseText().toString();
+                    fullSql = fullSql.replace(element.getStartTag().toString(), "");
+                    fullSql = fullSql.replace(element.getEndTag().toString(), "");
+
+                    output.add("Map<String, String> queryParametersValues = new HashMap<>();");
+                    output.add("Map<String, String> queryParametersTypes = new HashMap<>();");
+
+                    // should iterate all sub-elements
+                    for (Element childElement : element.getChildElements()) {
+                        String cfsqltype = childElement.getAttributeValue("cfsqltype");
+                        String value = childElement.getAttributeValue("value").replace("#", "");
+                        String paramName = value.replace(".", "_");
+                        fullSql = fullSql.replace(childElement.getStartTag().toString(), ":" + paramName);
+                        output.add("queryParametersValues.put(\"" + paramName + "\", \"" + value + "\");");
+                        output.add("queryParametersTypes.put(\"" + paramName + "\", \"" + cfsqltype + "\");");
+                    }
+
+                    output.add("String fullSql = \"" + fullSql + "\";");
+
+
+                    //String sql = element.getContent().getTextExtractor().toString();
+
+                    //elements.get(0).getStartTag().getAttributes();
+
+
+                    break;
+                case "cfqueryparam":
+                    break;
                 default:
-                    System.out.println(element.getName());
+                    System.out.println("Element not managed: " + elementName);
                     break;
             }
         }
-        System.out.println(String.join("\n", output));
+
+
+        String generateJavaSource = String.join("\n", output);
+
+        System.out.println(generateJavaSource);
 
     }
 
